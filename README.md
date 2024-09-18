@@ -14,23 +14,25 @@ Laravel deployment for Forge - zero downtime
 
 ```
 Program : laraploy  by peter@forret.com
-Version : v0.0.1 (Apr 22 16:07:13 2023)
+Version : v0.1.0 (2024-09-18 22:07)
 Purpose : Laravel deployment for Forge - zero downtime
-Usage   : laraploy [-h] [-q] [-v] [-f] [-l <log_dir>] [-t <tmp_dir>] <action>
+Usage   : laraploy [-h] [-Q] [-V] [-f] [-L <LOG_DIR>] [-T <TMP_DIR>] [-D <DOMAIN>] [-R <REPO>] [-K <KEEP>] [-S <RELEASES>] <action>
 Flags, options and parameters:
     -h|--help        : [flag] show usage [default: off]
-    -q|--quiet       : [flag] no output [default: off]
-    -v|--verbose     : [flag] also show debug messages [default: off]
-    -f|--force       : [flag] do not ask for confirmation (always yes) [default: off]
-    -l|--log_dir <?> : [option] folder for log files   [default: /Users/pforret/log/script]
-    -t|--tmp_dir <?> : [option] folder for temp files  [default: /tmp/script]
-    <action>         : [choice] action to perform  [options: action1,action2,check,env,update]
-                                  
+    -Q|--QUIET       : [flag] no output [default: off]
+    -V|--VERBOSE     : [flag] also show debug messages [default: off]
+    -f|--FORCE       : [flag] do not ask for confirmation (always yes) [default: off]
+    -L|--LOG_DIR <?> : [option] folder for log files   [default: /home/pforret/log/laraploy]
+    -T|--TMP_DIR <?> : [option] folder for temp files  [default: /tmp/laraploy]
+    -D|--DOMAIN <?>  : [option] site domain
+    -R|--REPO <?>    : [option] git repo URL
+    -K|--KEEP <?>    : [option] releases to keep  [default: 5]
+    -S|--RELEASES <?>: [option] releases folder
+    <action>         : [choice] action to perform  [options: deploy,check,env,update]
+                                                                                                                                                                                                                                                                     
 ### TIPS & EXAMPLES
-* use laraploy action1 to ...
-  laraploy action1
-* use laraploy action2 to ...
-  laraploy action2
+* use laraploy deploy to deploy Laravel project on Forge with zero downtime
+  laraploy deploy
 * use laraploy check to check if this script is ready to execute and what values the options/flags are
   laraploy check
 * use laraploy env to generate an example .env file
@@ -46,6 +48,10 @@ Flags, options and parameters:
 ```bash
 > laraploy -h 
 # get extended usage info
+
+> laraploy deploy
+# deploy Laravel project on Forge with zero downtime
+
 > laraploy env > .env
 # create a .env file with default values
 ```

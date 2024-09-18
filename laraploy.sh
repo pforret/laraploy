@@ -50,7 +50,6 @@ option|R|REPO|git repo URL|
 option|K|KEEP|releases to keep|5
 option|S|RELEASES|releases folder|
 choice|1|action|action to perform|deploy,check,env,update
-param|?|input|input file/text
 " -v -e '^#' -e '^\s*$'
 }
 
@@ -65,7 +64,7 @@ function Script:main() {
 
   case "${action,,}" in
   deploy)
-    #TIP: use «$script_prefix deploy» to ...
+    #TIP: use «$script_prefix deploy» to deploy Laravel project on Forge with zero downtime
     #TIP:> $script_prefix deploy
     do_deploy
     ;;
