@@ -105,9 +105,10 @@ function do_deploy() {
   Os:require "git"
   Os:require "npm"
 
+  local RELEASE_NAME
   RELEASE_NAME="$(date +%Y_%m_%d--%H_%M_%S)"
   [[ -z "$RELEASES" ]] && RELEASES=~/"$DOMAIN/releases"
-  DEPLOYMENT_DIRECTORY=$RELEASES/$RELEASE_NAME
+  local DEPLOYMENT_DIRECTORY="$RELEASES/$RELEASE_NAME"
   IO:announce "Deploying $DOMAIN to $DEPLOYMENT_DIRECTORY"
   mkdir -p "$RELEASES"
   cd "$RELEASES" || IO:die "Could not create $RELEASES"
@@ -120,12 +121,21 @@ function do_deploy() {
   git reset --hard FETCH_HEAD
 
   IO:success "Copy ./.env file"
-  ENV_FILE=~/"$DOMAIN"/current/.env
-  [[ -f "$ENV_FILE" ]] && cp "$ENV_FILE" ./.env || IO:die "Error: .env file is missing at $ENV_FILE."
+  local ENV_FILE=~/"$DOMAIN"/current/.env
+  if [[ -f "$ENV_FILE" ]] ; then
+    cp "$ENV_FILE" ./.env
+  else
+    IO:die "Error: .env file is missing at $ENV_FILE."
+  fi
 
   IO:success "Link ./storage/app folder"
-  STORAGE_DIR=~/"$DOMAIN"/storage/app
-  [[ -d "$STORAGE_DIR" ]] && rm -rf ./storage/app && ln -s -n -f -T "$STORAGE_DIR" ./storage/app || IO:die "Error: storage dir is missing at $STORAGE_DIR."
+  local STORAGE_DIR=~/"$DOMAIN"/storage/app
+  if [[ -d "$STORAGE_DIR" ]] ; then
+    rm -rf ./storage/app && ln -s -n -f -T "$STORAGE_DIR" ./storage/app
+  else
+    IO:die "Error: storage dir is missing at $STORAGE_DIR."
+  fi
+  [[ ! -d ./storage/app ]] && IO:die "Symlink to $STORAGE_DIR could not be done."
 
   IO:success "Install Composer Dependency Updates"
   $FORGE_COMPOSER install --no-interaction --prefer-dist --optimize-autoloader --no-dev
@@ -156,7 +166,7 @@ function do_deploy() {
   ln -s -n -f -T "$DEPLOYMENT_DIRECTORY" ~/"$DOMAIN/current"
 
   ( flock -w 10 9 || exit 1
-      echo 'Restarting FPM...'; sudo -S service $FORGE_PHP_FPM reload ) 9>/tmp/fpmlock
+      echo 'Restarting FPM...'; sudo -S service "$FORGE_PHP_FPM" reload ) 9>/tmp/fpmlock
 
   $FORGE_PHP artisan horizon:terminate
 
@@ -179,7 +189,6 @@ function do_deploy() {
     find . -maxdepth 1 -mindepth 1 -type d ! -name "$RELEASE_NAME" -printf '%T@\t%f\n' | sort -t $'\t' -g | head -n -"$KEEP" | cut -d $'\t' -f 2- | xargs rm -rf
   else
     KEEP=$((KEEP+1))
-    LINES_STORED_RELEASES_TOTAL=$(find . -maxdepth 1 -mindepth 1 -type d -printf '%T@\t%f\n' | wc -l)
     IO:alert "No old releases to delete"
   fi
 
