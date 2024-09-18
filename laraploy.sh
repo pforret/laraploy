@@ -2,7 +2,7 @@
 ### ==============================================================================
 ### SO HOW DO YOU PROCEED WITH YOUR SCRIPT?
 ### 1. define the flags/options/parameters and defaults you need in Option:config()
-### 2. implement the different actions in Script:main() directly or with helper functions do_action1
+### 2. implement the different actions in Script:main() directly or with helper functions do_deploy
 ### 3. implement helper functions you defined in previous step
 ### ==============================================================================
 
@@ -45,8 +45,11 @@ flag|V|VERBOSE|also show debug messages
 flag|f|FORCE|do not ask for confirmation (always yes)
 option|L|LOG_DIR|folder for log files |$HOME/log/$script_prefix
 option|T|TMP_DIR|folder for temp files|/tmp/$script_prefix
-#option|W|WIDTH|width of the picture|800
-choice|1|action|action to perform|action1,action2,check,env,update
+option|D|DOMAIN|site domain|
+option|R|REPO|git repo URL|
+option|K|KEEP|releases to keep|5
+option|S|RELEASES|releases folder|
+choice|1|action|action to perform|deploy,check,env,update
 param|?|input|input file/text
 " -v -e '^#' -e '^\s*$'
 }
@@ -61,24 +64,12 @@ function Script:main() {
   Os:require "awk"
 
   case "${action,,}" in
-  action1)
-    #TIP: use «$script_prefix action1» to ...
-    #TIP:> $script_prefix action1
-    do_action1
+  deploy)
+    #TIP: use «$script_prefix deploy» to ...
+    #TIP:> $script_prefix deploy
+    do_deploy
     ;;
 
-  action2)
-    #TIP: use «$script_prefix action2» to ...
-    #TIP:> $script_prefix action2
-    do_action2
-    ;;
-
-  action3)
-    #TIP: use «$script_prefix action3» to ...
-    #TIP:> $script_prefix action3
-    # Os:require "convert" "imagemagick"
-    # CONVERT $input $output
-    ;;
 
   check | env)
     ## leave this default action, it will make it easier to test your script
@@ -109,13 +100,94 @@ function Script:main() {
 ## Put your helper scripts here
 #####################################################################
 
-function do_action1() {
-  IO:log "action1"
+function do_deploy() {
+  IO:log "deploy"
   # Examples of required binaries/scripts and how to install them
-  # Os:require "ffmpeg"
-  # Os:require "convert" "imagemagick"
-  # Os:require "IO:progressbar" "basher install pforret/IO:progressbar"
-  # (code)
+  Os:require "git"
+  Os:require "npm"
+
+  RELEASE_NAME="$(date +%Y_%m_%d--%H_%M_%S)"
+  [[ -z "$RELEASES" ]] && RELEASES=~/"$DOMAIN/releases"
+  DEPLOYMENT_DIRECTORY=$RELEASES/$RELEASE_NAME
+  IO:announce "Deploying $DOMAIN to $DEPLOYMENT_DIRECTORY"
+  mkdir -p "$RELEASES"
+  cd "$RELEASES" || IO:die "Could not create $RELEASES"
+
+  IO:success "Clone GIT project from $REPO and checkout branch $FORGE_SITE_BRANCH"
+  git clone "$PROJECT_REPO" "$RELEASE_NAME"
+  cd "$RELEASE_NAME" || IO:die "Could not clone $PROJECT_REPO"
+  git checkout "$FORGE_SITE_BRANCH"
+  git fetch origin "$FORGE_SITE_BRANCH"
+  git reset --hard FETCH_HEAD
+
+  IO:success "Copy ./.env file"
+  ENV_FILE=~/"$DOMAIN"/current/.env
+  [[ -f "$ENV_FILE" ]] && cp "$ENV_FILE" ./.env || IO:die "Error: .env file is missing at $ENV_FILE."
+
+  IO:success "Link ./storage/app folder"
+  STORAGE_DIR=~/"$DOMAIN"/storage/app
+  [[ -d "$STORAGE_DIR" ]] && rm -rf ./storage/app && ln -s -n -f -T "$STORAGE_DIR" ./storage/app || IO:die "Error: storage dir is missing at $STORAGE_DIR."
+
+  IO:success "Install Composer Dependency Updates"
+  $FORGE_COMPOSER install --no-interaction --prefer-dist --optimize-autoloader --no-dev
+
+  IO:success "Installing NPM dependencies based on \"./package-lock.json\""
+  npm ci
+  npm run build
+
+  if [ -f artisan ]; then
+    IO:success "Link ./public/storage"
+    $FORGE_PHP artisan storage:link
+
+    IO:success "Clear and cache routes, config, views, events"
+    $FORGE_PHP artisan config:cache
+    $FORGE_PHP artisan route:cache
+    $FORGE_PHP artisan view:cache
+    $FORGE_PHP artisan event:cache
+
+    IO:success "Database Migrations"
+    $FORGE_PHP artisan migrate --force
+  fi
+
+  echo "$RELEASE_NAME" >> "$RELEASES/.successes"
+
+  if [ -d ~/"$DOMAIN/current" ] && [ ! -L ~/$"DOMAIN/current" ]; then
+    rm -rf ~/"$DOMAIN/current"
+  fi
+  ln -s -n -f -T "$DEPLOYMENT_DIRECTORY" ~/"$DOMAIN/current"
+
+  ( flock -w 10 9 || exit 1
+      echo 'Restarting FPM...'; sudo -S service $FORGE_PHP_FPM reload ) 9>/tmp/fpmlock
+
+  $FORGE_PHP artisan horizon:terminate
+
+  cd "$RELEASES" || IO:die "Could not change to $RELEASES"
+
+  if grep -qvf .successes <(ls -1)
+  then
+    grep -vf .successes <(ls -1)
+    grep -vf .successes <(ls -1) | xargs rm -rf
+  else
+    echo "No failed releases found."
+  fi
+
+  IO:success "Delete old releases"
+  KEEP=$((KEEP-1))
+  LINES_STORED_RELEASES_TO_DELETE=$(find . -maxdepth 1 -mindepth 1 -type d ! -name "$RELEASE_NAME" -printf '%T@\t%f\n' | head -n -"$KEEP" | wc -l)
+  if [ "$LINES_STORED_RELEASES_TO_DELETE" != 0 ]; then
+    find . -maxdepth 1 -mindepth 1 -type d ! -name "$RELEASE_NAME" -printf '%T@\t%f\n' | sort -t $'\t' -g | head -n -"$KEEP" | cut -d $'\t' -f 2-
+    find . -maxdepth 1 -mindepth 1 -type d ! -name "$RELEASE_NAME" -printf '%T@\t%f\n' | sort -t $'\t' -g | head -n -"$KEEP" | cut -d $'\t' -f 2- | xargs -I {} sed -i -e '/{}/d' .successes
+    find . -maxdepth 1 -mindepth 1 -type d ! -name "$RELEASE_NAME" -printf '%T@\t%f\n' | sort -t $'\t' -g | head -n -"$KEEP" | cut -d $'\t' -f 2- | xargs rm -rf
+  else
+    KEEP=$((KEEP+1))
+    LINES_STORED_RELEASES_TOTAL=$(find . -maxdepth 1 -mindepth 1 -type d -printf '%T@\t%f\n' | wc -l)
+    IO:alert "No old releases to delete"
+  fi
+
+  IO:success "Show remaining releases"
+  find . -maxdepth 1 -mindepth 1 -type d -printf '%T@\t%f\n' | sort -nr | cut -f 2-
+
+  IO:success "Done!"
 }
 
 function do_action2() {
