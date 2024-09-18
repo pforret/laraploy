@@ -69,6 +69,7 @@ or with `git`
 
 ## 📝 Acknowledgements
 
+* original deployment script: by [Zacharias Creutznacher - @Sairahcaz2k](https://x.com/Sairahcaz2k/status/1835800971986792834) - [gist.github.com](https://gist.github.com/Sairahcaz/104019bf733663668610fdd18590c509)
 * script created with [bashew](https://github.com/pforret/bashew)
 
 &copy; 2024 Peter Forret
